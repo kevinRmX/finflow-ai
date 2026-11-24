@@ -1,0 +1,344 @@
+// FinFlow AI: esquema de base de datos (Prisma 7 + PostgreSQL)
+// Montos en Decimal(14,2). Campos con sufijo "Enc" van cifrados con AES-256-GCM.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AccountType {
+  CASH
+  SAVINGS
+  CREDIT_CARD
+  DEBIT_CARD
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum TxSource {
+  MANUAL
+  AI_CHAT
+  VOICE
+  OCR
+  NOTIFICATION
+  EMAIL
+  OPEN_BANKING
+}
+
+enum Plan {
+  FREE
+  AD_FREE
+}
+
+enum AuthProvider {
+  EMAIL
+  APPLE
+  GOOGLE
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+}
+
+enum CaptureStatus {
+  PENDING
+  CONFIRMED
+  DISMISSED
+}
+
+model User {
+  id              String       @id @default(uuid())
+  name            String
+  email           String       @unique
+  passwordHash    String?
+  authProvider    AuthProvider @default(EMAIL)
+  currency        String       @default("GTQ") // ISO 4217
+  country         String       @default("GT") // ISO 3166
+  locale          String       @default("es")
+  plan            Plan         @default(FREE)
+  adsPersonalized Boolean      @default(false) // consentimiento ATT/UMP
+  inboundAlias    String?      @unique // gastos-xxxx@dominio
+  reminderTime    String? // "20:30"
+  streakDays      Int          @default(0)
+  lastEntryAt     DateTime?
+  mascot          String       @default("flo") // flo | coco | leo | balam
+  mascotStage     Int          @default(1) // 1 bebé … 4 leyenda
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  accounts      Account[]
+  transactions  Transaction[]
+  categories    Category[]
+  budgets       Budget[]
+  goals         Goal[]
+  reminders     Reminder[]
+  notifications Notification[]
+  aiMessages    AiMessage[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
+  bankLinks     BankConnection[]
+  captures      PendingCapture[]
+  merchantRules MerchantRule[]
+}
+
+// Refresh tokens de @nestjs/authentication (guardados como SHA-256, rotan en cada uso)
+model RefreshToken {
+  id              String    @id // SHA-256 del token
+  familyId        String
+  userId          String
+  createdAt       DateTime
+  expiresAt       DateTime
+  familyExpiresAt DateTime
+  usedAt          DateTime?
+  claims          Json?
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@index([familyExpiresAt])
+}
+
+model RevokedTokenFamily {
+  familyId  String   @id
+  revokedAt DateTime @default(now())
+}
+
+model Account {
+  id               String          @id @default(uuid())
+  userId           String
+  name             String // "Tarjeta BAC"
+  type             AccountType
+  institution      String? // "BAC", "Banco Industrial"
+  last4Enc         String? // cifrado AES-256-GCM
+  currency         String          @default("GTQ")
+  balance          Decimal         @default(0) @db.Decimal(14, 2)
+  creditLimit      Decimal?        @db.Decimal(14, 2)
+  paymentDueDay    Int?
+  isArchived       Boolean         @default(false)
+  bankConnectionId String?
+  createdAt        DateTime        @default(now())
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankConnection   BankConnection? @relation(fields: [bankConnectionId], references: [id])
+  transactions     Transaction[]   @relation("FromAccount")
+  transfersIn      Transaction[]   @relation("ToAccount")
+
+  @@index([userId])
+}
+
+model Category {
+  id            String          @id @default(uuid())
+  userId        String? // null = categoría del sistema
+  name          String
+  icon          String // nombre de icono Lucide
+  color         String
+  type          TransactionType
+  parentId      String?
+  user          User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent        Category?       @relation("Sub", fields: [parentId], references: [id])
+  children      Category[]      @relation("Sub")
+  transactions  Transaction[]
+  budgets       Budget[]
+  merchantRules MerchantRule[]
+
+  @@unique([userId, name, type])
+}
+
+model Merchant {
+  id                String        @id @default(uuid())
+  name              String        @unique
+  defaultCategoryId String?
+  logoUrl           String?
+  transactions      Transaction[]
+}
+
+// Lo que la IA aprende de las correcciones de cada usuario ("Puma" -> Transporte)
+model MerchantRule {
+  id          String   @id @default(uuid())
+  userId      String
+  merchantKey String // nombre normalizado en minúsculas
+  categoryId  String
+  hits        Int      @default(1)
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, merchantKey])
+}
+
+model Transaction {
+  id           String          @id @default(uuid())
+  userId       String
+  type         TransactionType
+  amount       Decimal         @db.Decimal(14, 2)
+  currency     String          @default("GTQ")
+  taxAmount    Decimal?        @db.Decimal(14, 2)
+  date         DateTime
+  description  String?
+  notesEnc     String? // cifrado AES-256-GCM
+  source       TxSource        @default(MANUAL)
+  aiConfidence Float?
+  accountId    String
+  toAccountId  String?
+  categoryId   String?
+  merchantId   String?
+  receiptUrl   String?
+  externalId   String?
+  createdAt    DateTime        @default(now())
+  deletedAt    DateTime?
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account         @relation("FromAccount", fields: [accountId], references: [id])
+  toAccount    Account?        @relation("ToAccount", fields: [toAccountId], references: [id])
+  category     Category?       @relation(fields: [categoryId], references: [id])
+  merchant     Merchant?       @relation(fields: [merchantId], references: [id])
+  aiMessage    AiMessage?
+  capture      PendingCapture?
+
+  @@unique([accountId, externalId])
+  @@index([userId, date])
+  @@index([userId, categoryId, date])
+}
+
+model Budget {
+  id          String   @id @default(uuid())
+  userId      String
+  categoryId  String
+  amount      Decimal  @db.Decimal(14, 2)
+  period      String   @default("MONTHLY")
+  startDate   DateTime
+  lastAlertAt Int? // 80, 90 o 100
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([userId, categoryId, period, startDate])
+}
+
+model Goal {
+  id            String             @id @default(uuid())
+  userId        String
+  name          String
+  targetAmount  Decimal            @db.Decimal(14, 2)
+  savedAmount   Decimal            @default(0) @db.Decimal(14, 2)
+  targetDate    DateTime?
+  icon          String?
+  status        GoalStatus         @default(ACTIVE)
+  createdAt     DateTime           @default(now())
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contributions GoalContribution[]
+
+  @@index([userId])
+}
+
+model GoalContribution {
+  id     String   @id @default(uuid())
+  goalId String
+  amount Decimal  @db.Decimal(14, 2)
+  date   DateTime @default(now())
+  goal   Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+}
+
+model Reminder {
+  id         String   @id @default(uuid())
+  userId     String
+  title      String
+  amount     Decimal? @db.Decimal(14, 2)
+  dueDate    DateTime
+  recurrence String? // RRULE
+  accountId  String?
+  isDone     Boolean  @default(false)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dueDate])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  type      String // BUDGET_80, BILL_DUE, ANOMALY...
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model AiMessage {
+  id            String       @id @default(uuid())
+  userId        String
+  role          String // user | assistant
+  content       String
+  inputType     String       @default("TEXT") // TEXT | VOICE | IMAGE
+  parsed        Json?
+  model         String?
+  tokensUsed    Int?
+  transactionId String?      @unique
+  createdAt     DateTime     @default(now())
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String // LOGIN, TX_CREATE, TX_DELETE...
+  entity    String
+  entityId  String?
+  ip        String?
+  userAgent String?
+  meta      Json?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+// Preparado para Open Banking (v2)
+model BankConnection {
+  id          String    @id @default(uuid())
+  userId      String
+  provider    String
+  institution String
+  accessEnc   String // token cifrado AES-256-GCM
+  status      String    @default("ACTIVE")
+  lastSyncAt  DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts    Account[]
+}
+
+// Gastos detectados (notificación o correo) que esperan confirmación del usuario
+model PendingCapture {
+  id            String        @id @default(uuid())
+  userId        String
+  source        TxSource // NOTIFICATION | EMAIL
+  amount        Decimal       @db.Decimal(14, 2)
+  currency      String        @default("GTQ")
+  merchant      String?
+  cardLast4     String?
+  occurredAt    DateTime
+  dedupeKey     String // monto + comercio + minuto
+  status        CaptureStatus @default(PENDING)
+  transactionId String?       @unique
+  createdAt     DateTime      @default(now())
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction   Transaction?  @relation(fields: [transactionId], references: [id])
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, status])
+}
