@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "FinFlow AI",
+    "slug": "finflow-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.finflow.app",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "FinFlow usa Face ID para proteger tus finanzas.",
+        "NSMicrophoneUsageDescription": "FinFlow usa el micr\u00f3fono para que registres gastos con tu voz.",
+        "NSCameraUsageDescription": "FinFlow usa la c\u00e1mara para leer tus recibos.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0E17",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.finflow.app",
+      "blockedPermissions": [
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_SMS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-localization",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "FinFlow usa Face ID para proteger tus finanzas."
+        }
+      ]
+    ],
+    "scheme": "finflow",
+    "backgroundColor": "#0A0E17",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

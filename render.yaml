@@ -1,0 +1,25 @@
+# Despliegue gratis en Render (se duerme tras 15 min sin uso; el primer request tarda ~30 s).
+services:
+  - type: web
+    name: finflow-api
+    runtime: node
+    plan: free
+    rootDir: apps/api
+    buildCommand: npm ci && npm run build && npx prisma migrate deploy
+    startCommand: node dist/main.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # cadena de conexión de Supabase
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATA_ENCRYPTION_KEY
+        sync: false # openssl rand -base64 32
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: INBOUND_EMAIL_DOMAIN
+        sync: false
+      - key: INBOUND_EMAIL_SECRET
+        generateValue: true
