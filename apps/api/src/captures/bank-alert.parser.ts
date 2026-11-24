@@ -12,13 +12,14 @@ export interface BankAlert {
  * Devuelve null si el texto no parece una compra.
  */
 export function parseBankAlert(text: string): BankAlert | null {
-  const clean = text.replace(/\s+/g, ' ').trim();
+  // Las alertas reales son cortas; cortar el texto acota el costo de cada regex.
+  const clean = text.slice(0, 1000).replace(/\s+/g, ' ').trim();
   if (!/(compra|consumo|cargo|pago|transacci[oó]n|retiro)/i.test(clean)) return null;
   if (/(rechazad|declinad|no autorizad|fallid)/i.test(clean)) return null;
 
   const money =
-    clean.match(/\b(GTQ|Q|USD|US\$|\$)\s?\.?\s?([\d,]+\.\d{2}|[\d,]+)/i) ??
-    clean.match(/([\d,]+\.\d{2})\s?(GTQ|USD|quetzales|d[oó]lares)/i);
+    clean.match(/\b(GTQ|Q|USD|US\$|\$)\s?\.?\s?(\d[\d,]*\.\d{2}|\d[\d,]*)/i) ??
+    clean.match(/(?<![\d,])(\d[\d,]*\.\d{2})\s?(GTQ|USD|quetzales|d[oó]lares)/i);
   if (!money) return null;
 
   const [symbol, rawAmount] = /^\d/.test(money[1]) ? [money[2], money[1]] : [money[1], money[2]];

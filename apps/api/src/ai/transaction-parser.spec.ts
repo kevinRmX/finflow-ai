@@ -48,3 +48,15 @@ describe('localParse', () => {
     expect(r.missing).toContain('amount');
   });
 });
+
+describe('anonymize con texto malicioso', () => {
+  it('termina rápido con miles de signos +', () => {
+    const start = performance.now();
+    anonymize('+'.repeat(50_000));
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+
+  it('sigue ocultando correos y números de tarjeta', () => {
+    expect(anonymize('pagué con 4111 1111 1111 1111, avisar a ana@mail.com')).toBe('pagué con [número], avisar a [correo]');
+  });
+});

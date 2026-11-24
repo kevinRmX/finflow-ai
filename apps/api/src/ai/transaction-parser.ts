@@ -20,10 +20,14 @@ export type ParsedTransaction = z.infer<typeof parsedTransactionSchema>;
  * números largos (cuentas, tarjetas) y teléfonos.
  */
 export function anonymize(text: string): string {
+  // Se corta primero y se revisa palabra por palabra: ninguna expresión
+  // regular recorre el texto completo con retrocesos (evita ReDoS).
   return text
-    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[correo]')
-    .replace(/\b(?:\d[ -]?){8,19}\b/g, '[número]')
-    .slice(0, 500);
+    .slice(0, 500)
+    .split(/(\s+)/)
+    .map((word) => (word.includes('@') ? '[correo]' : word))
+    .join('')
+    .replace(/\b(?:\d[ -]?){8,19}\b/g, '[número]');
 }
 
 const CATEGORY_HINTS: Array<[RegExp, string]> = [

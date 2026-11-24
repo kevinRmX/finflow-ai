@@ -27,3 +27,11 @@ describe('parseBankAlert', () => {
     expect(parseBankAlert('Tu código de verificación es 482193')).toBeNull();
   });
 });
+
+describe('parseBankAlert con texto malicioso', () => {
+  it('termina rápido con miles de comas', () => {
+    const start = performance.now();
+    expect(parseBankAlert('compra ' + '1,'.repeat(20_000))).toBeNull();
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+});
